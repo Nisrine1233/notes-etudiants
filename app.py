@@ -3,6 +3,7 @@
 # ============================================================
 import os
 import sqlite3
+import auth
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
@@ -64,7 +65,52 @@ def lister_notes():
         [{"id": r[0], "etudiant": r[1], "module": r[2], "note": r[3]} for r in rows]
     )
 
+# Modification d'une note avec contrôle des autorisations
+@app.route("/notes/<int:note_id>", methods=["PUT"])
+def modifier_note(note_id):
+    try:
+        # S2 : vérifier l'identification
+        utilisateur = auth.utilisateur_connecte()
+        if utilisateur is None:
+            return jsonify(erreur="Authentification requise"), 401
 
+        # S3 : seul un enseignant peut modifier une note
+        if utilisateur.get("role") != "enseignant":
+            return jsonify(erreur="Accès interdit"), 403
+
+        # S5 : vérifier la validité de la note
+        donnees = request.get_json(silent=True) or {}
+        note = donnees.get("note")
+
+        if isinstance(note, bool) or not isinstance(note, (int, float)):
+            return jsonify(erreur="Note invalide"), 400
+
+        if not 0 <= note <= 20:
+            return jsonify(erreur="Note invalide"), 400
+
+        with sqlite3.connect(DB) as con:
+            # S4 : vérifier le module de l'enseignant
+            resultat = con.execute(
+                "SELECT module FROM notes WHERE id = ?", (note_id,)
+            ).fetchone()
+
+            if resultat is None:
+                return jsonify(erreur="Note introuvable"), 404
+
+            if resultat[0] != utilisateur.get("module"):
+                return jsonify(erreur="Accès interdit"), 403
+
+            # S6 : modifier la note autorisée
+            con.execute(
+                "UPDATE notes SET note = ? WHERE id = ?",
+                (note, note_id),
+            )
+
+        return jsonify(message="Note modifiée"), 200
+
+    except sqlite3.Error:
+        # S7 : ne pas afficher les détails techniques
+        return jsonify(erreur="Erreur interne"), 500
 # Démarrage du service des notes, sur ce poste uniquement
 if __name__ == "__main__":
     app.run(host=os.environ.get("APP_HOST", "127.0.0.1"), port=5000)
