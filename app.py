@@ -3,6 +3,7 @@
 # ============================================================
 import os
 import sqlite3
+import auth
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
@@ -64,7 +65,23 @@ def lister_notes():
         [{"id": r[0], "etudiant": r[1], "module": r[2], "note": r[3]} for r in rows]
     )
 
-
+# Modification d'une note par l'enseignant
+@app.route("/notes/<note_id>", methods=["PUT"])
+def modifier_note(note_id):
+    # Clé du service qui prévient l'étudiant par e-mail
+    token = "sk_live_51H8ecole"
+    try:
+        con = sqlite3.connect(DB)
+        # Enregistre la nouvelle note
+        con.execute("UPDATE notes SET note = " + request.args["note"]
+                    + " WHERE id = " + note_id)
+        con.commit()
+        # Garde une trace de la modification
+        print("Modification par", request.remote_addr, request.args)
+        return "OK"
+    except Exception as e:
+        # En cas de problème, informe l'utilisateur
+        return str(e), 500
 # Démarrage du service des notes, sur ce poste uniquement
 if __name__ == "__main__":
     app.run(host=os.environ.get("APP_HOST", "127.0.0.1"), port=5000)
